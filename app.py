@@ -5,12 +5,12 @@ from services.llm_service import (
 )
 
 st.set_page_config(
-    page_title="AI QA Requirement Analyzer",
+    page_title="VANAI QA AGENT",
     page_icon="🧪",
     layout="wide"
 )
 
-st.title("🧪 AI QA Requirement Analyzer")
+st.title("🧪 VANAI QA AGENT")
 
 st.write(
     """
