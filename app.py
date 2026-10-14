@@ -1,11 +1,16 @@
-
-
 import re
+import time
+from datetime import date
 
 import pandas as pd
 import streamlit as st
 
 from services.llm_service import analyze_requirement
+
+# Basic usage protection
+MAX_REQUESTS_PER_SESSION_PER_DAY = 3
+COOLDOWN_SECONDS = 60
+MAX_REQUIREMENT_LENGTH = 5000
 
 
 # --------------------------------------------------
@@ -13,7 +18,7 @@ from services.llm_service import analyze_requirement
 # --------------------------------------------------
 
 st.set_page_config(
-    page_title="VANAI QA Agent",
+    page_title="van.ai | AI-powered QA",
     page_icon="🧪",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -31,6 +36,15 @@ if "last_requirement" not in st.session_state:
 
 if "analysis_error" not in st.session_state:
     st.session_state.analysis_error = None
+
+if "request_count" not in st.session_state:
+    st.session_state.request_count = 0
+
+if "request_count_date" not in st.session_state:
+    st.session_state.request_count_date = date.today()
+
+if "last_request_time" not in st.session_state:
+    st.session_state.last_request_time = 0.0    
 
 
 # --------------------------------------------------
@@ -355,7 +369,12 @@ def render_metric(label, value, note):
 # --------------------------------------------------
 
 with st.sidebar:
-    st.markdown("# 🧪 VANAI")
+    st.markdown (
+        '<div style="font-size:2rem;font-weight:750;'
+        'color:#F8FAFC;">van<span style="color:#34D399;">.ai</span></div>',
+        unsafe_allow_html=True,
+    )
+    st.caption("AI-POWERED QA")
     st.caption("AI QUALITY ENGINEERING")
     st.divider()
 
@@ -377,7 +396,7 @@ with st.sidebar:
     )
 
     st.divider()
-    st.caption("VANAI QA Agent · Prototype")
+    st.caption("van.ai QA Agent · Prototype")
 
 
 # --------------------------------------------------
@@ -388,17 +407,42 @@ header_left, header_right = st.columns([4, 1])
 
 with header_left:
     st.markdown(
-        '<h1 style="margin-bottom: 0.2rem;">'
-        'Requirement <span style="color:#34D399;">Analyzer</span>'
-        '</h1>', unsafe_allow_html=True
-    )
-    st.markdown(
-        '<div class="vanai-subtitle">'
-        "Transform product requirements into risk insights, "
-        "acceptance questions, and actionable test cases."
-        "</div>",
+        """
+        <div style="
+            display: flex;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 12px;
+            padding-top: 8px;
+        ">
+            <span style="
+                font-size: 3.5rem;
+                font-weight: 800;
+                letter-spacing: -2px;
+                line-height: 1.2;
+                color: #F8FAFC;
+            ">
+                van<span style="color: #34D399;">.ai</span>
+            </span>
+            <span style="
+                font-size: 1.15rem;
+                font-weight: 600;
+                letter-spacing: 2px;
+                color: #A8B7CC;
+            ">
+                QA STUDIO
+            </span>
+        </div>
+        <div class="vanai-subtitle">
+            Transform product requirements into risk insights,
+            acceptance questions, and actionable test cases.
+        </div>
+        """,
         unsafe_allow_html=True,
     )
+
+
 
 with header_right:
     st.markdown(" ")
@@ -418,6 +462,7 @@ requirement = st.text_area(
         "As a user, I want to log in with my email and password "
         "so that I can securely access my account..."
     ),
+    max_chars=MAX_REQUIREMENT_LENGTH,
     key="requirement_input",
 )
 
@@ -431,60 +476,118 @@ analyze_clicked = st.button(
     use_container_width=True,
 )
 
+remaining_requests = max(
+    0,
+    MAX_REQUESTS_PER_SESSION_PER_DAY
+    - st.session_state.request_count,
+)
+
+st.caption(
+    "Daily session allowance: {} of {} analyses remaining".format(
+        remaining_requests,
+        MAX_REQUESTS_PER_SESSION_PER_DAY,
+    )
+)
+
 
 # --------------------------------------------------
 # Live analysis
 # --------------------------------------------------
 
+
 if analyze_clicked:
     if not requirement.strip():
         st.warning("Please enter a requirement before analyzing.")
+
+    elif len(requirement) > MAX_REQUIREMENT_LENGTH:
+        st.warning(
+            "Your requirement is too long. "
+            "Please keep it under 5,000 characters."
+        )
+
     else:
-        st.session_state.analysis_error = None
+        # Reset the session counter on a new server-local date.
+        today = date.today()
 
-        try:
-            with st.spinner("Reviewing requirement and generating QA insights..."):
-                result = analyze_requirement(requirement)
+        if st.session_state.request_count_date != today:
+            st.session_state.request_count = 0
+            st.session_state.request_count_date = today
 
-            st.session_state.analysis_result = result
-            st.session_state.last_requirement = requirement
+        elapsed = time.time() - st.session_state.last_request_time
 
-        except ValueError as exc:
-            st.session_state.analysis_error = str(exc)
-
-        except FileNotFoundError:
-            st.session_state.analysis_error = (
-                "The QA prompt file is missing. "
-                "Please contact the application maintainer."
+        if (
+            st.session_state.request_count
+            >= MAX_REQUESTS_PER_SESSION_PER_DAY
+        ):
+            st.warning(
+                "You've reached the daily analysis limit for this session. "
+                "Please try again tomorrow."
             )
 
-        except RuntimeError as exc:
-            error_text = str(exc)
-
-            if any(
-                term in error_text.lower()
-                for term in (
-                    "429",
-                    "quota",
-                    "resourceexhausted",
-                    "rate limit",
+        elif elapsed < COOLDOWN_SECONDS:
+            remaining = int(COOLDOWN_SECONDS - elapsed) + 1
+            st.warning(
+                "Please wait {} seconds before your next analysis.".format(
+                    remaining
                 )
-            ):
+            )
+
+        else:
+            st.session_state.analysis_error = None
+
+            # Count the attempt before calling Gemini, including failures.
+            st.session_state.request_count += 1
+            st.session_state.last_request_time = time.time()
+
+            try:
+                with st.spinner(
+                    "Reviewing requirement and generating QA insights..."
+                ):
+                    result = analyze_requirement(requirement)
+
+                st.session_state.analysis_result = result
+                st.session_state.last_requirement = requirement
+
+            except ValueError as exc:
+                st.session_state.analysis_error = str(exc)
+
+            except FileNotFoundError:
                 st.session_state.analysis_error = (
-                    "QUOTA_LIMIT: You've reached your Gemini API "
-                    "free-tier request limit. Wait for the quota "
-                    "to reset, then try again. No paid access "
-                    "has been enabled by this app."
+                    "The QA prompt file is missing. "
+                    "Please contact the application maintainer."
                 )
-            else:
-                st.session_state.analysis_error = error_text
 
-        except Exception as exc:
-            print(f"Unexpected error: {type(exc).__name__}: {exc}")
-            st.session_state.analysis_error = (
-                "An unexpected error occurred. Check the terminal "
-                "for details and try again."
-            )
+            except RuntimeError as exc:
+                error_text = str(exc)
+
+                if any(
+                    term in error_text.lower()
+                    for term in (
+                        "429",
+                        "quota",
+                        "resourceexhausted",
+                        "rate limit",
+                    )
+                ):
+                    st.session_state.analysis_error = (
+                        "QUOTA_LIMIT: You've reached your Gemini API "
+                        "free-tier request limit. Wait for the quota "
+                        "to reset, then try again."
+                    )
+                else:
+                    st.session_state.analysis_error = error_text
+
+            except Exception as exc:
+                print(
+                    "Unexpected error: {}: {}".format(
+                        type(exc).__name__, exc
+                    )
+                )
+                st.session_state.analysis_error = (
+                    "An unexpected error occurred. "
+                    "Check the terminal for details."
+                )
+
 
 
 # --------------------------------------------------
@@ -607,7 +710,7 @@ if report:
     st.download_button(
         label="⬇️ Download QA report (.md)",
         data=report,
-        file_name="vanai_qa_analysis.md",
+        file_name="van_ai_qa_report.md",
         mime="text/markdown",
         use_container_width=True,
     )
