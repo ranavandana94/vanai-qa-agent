@@ -154,7 +154,7 @@ python -m pytest -v
 
 Try **van.ai QA Studio**:
 
-https://vanai-app-agent.streamlit.app/
+https://vanai-quality-studio.streamlit.app/
 
 ## Future Direction
 
