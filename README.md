@@ -1,4 +1,4 @@
-# # van.ai   ##### QA Studio
+# van.ai QA Studio
 
 **AI-powered quality engineering, reimagined.**
 
