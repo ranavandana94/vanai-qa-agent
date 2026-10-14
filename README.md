@@ -1,4 +1,4 @@
-# VANAI QA AGENT
+# VAN.AI QA AGENT
 
 A Streamlit web app that reviews software requirements (e.g. Jira stories) using Google Gemini and returns structured QA feedback.
 
@@ -8,11 +8,11 @@ Paste a requirement, click **Analyze Requirement**, and get a risk score, missin
 
 **Input & risk analysis**
 
-![VANAI QA AGENT — input and analysis](screenshots/screenshot-input.png)
+![VAN.AI QA AGENT — input and analysis](screenshots/screenshot-input.png)
 
 **Edge cases, test cases, and PO questions**
 
-![VANAI QA AGENT — detailed QA output](screenshots/screenshot-analysis.png)
+![VAN.AI QA AGENT — detailed QA output](screenshots/screenshot-analysis.png)
 
 ## Features
 
